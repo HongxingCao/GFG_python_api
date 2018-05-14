@@ -2,7 +2,7 @@ from __future__ import print_function
 import os
 import matlab as mlab
 import matlab.engine as mlab_eng
-from utils import load_cinfo_from_mat_files, get_all_au_labels
+from utils import load_cinfo, get_all_au_labels
 
 
 def run(face_id=None, save_path=None, au_labels=None, temp_params=None,
@@ -31,7 +31,7 @@ def run(face_id=None, save_path=None, au_labels=None, temp_params=None,
     if head_params is None:
         head_params = 0
 
-    cinfo = load_cinfo_from_mat_files()
+    cinfo = load_cinfo()
     if face_id is None:
         age_up, age_down = age + age_range, age - age_range
         query = 'gender == @gender & @age_down <= age <= @age_up'

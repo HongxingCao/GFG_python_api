@@ -2,32 +2,19 @@ import numpy as np
 import pandas as pd
 import os.path as op
 from scipy.io import loadmat
-from glob import glob
 
 
-def load_cinfo_from_mat_files(save_to_disk=False):
-    """ Loads cinfo and converts it to a pandas dataframe. """
+def load_cinfo(version='v1'):
+    """ Loads cinfo given a version. """
+    df_path = op.join(op.dirname(__file__), 'data', 'cinfo.tsv')
+    df = pd.read_csv(df_path, sep='\t')
 
-    data_path = op.join(op.dirname(__file__), 'data')
-    mat_files = glob(op.join(data_path, '*.mat'))
-
-    to_save = dict()
-    for matf in mat_files:
-        fname = op.basename(matf).split('.mat')[0]
-        this_field = loadmat(matf)['this_field']
-
-        if isinstance(this_field[0][0], np.ndarray):
-            # Must be string
-            clean = np.array([f[0][0] for f in this_field])
-        else:
-            clean = np.array([f[0] for f in this_field])
-
-        to_save[fname] = clean
-
-    df = pd.DataFrame(to_save)
-
-    if save_to_disk:
-        df.to_csv(op.join(data_path, 'cinfo.tsv'), sep="\t", index=False)
+    if version == 'v1':
+        df = df[df.proc == 1]
+    elif version == 'v2':
+        df = df[df.proc_v2 == 1]
+    else:
+        raise ValueError("Version not known. Pick v1 or v2.")
 
     return df
 
@@ -38,3 +25,32 @@ def get_all_au_labels():
     all_au_labels = [str(aul[0]).split('AU')[1]
                      for aul in all_au_labels['au_labels'][0]]
     return all_au_labels
+
+
+def sample_AUs(au_labels, n=5, p=0.6, remove_prefix=True):
+    """ Draws a random sample of AUs.
+
+    Parameters
+    ----------
+    au_labels : numpy array
+        Array with AU-labels
+    n : int
+        Parameter n of binomial distribution
+    p : float
+        Parameter p of binomial distribution
+
+    Returns
+    -------
+    these_AUs : numpy array
+        Array with selected AUs.
+    """
+    this_n = np.random.binomial(n=5, p=0.6)
+    while this_n == 0:  # Resample if number of AUs to draw is 0
+        this_n = np.random.binomial(n=5, p=0.6)
+
+    these_AUs = np.random.choice(au_labels, size=this_n, replace=False)
+
+    if remove_prefix:
+        these_AUs = [au.split('AU')[1] for au in these_AUs]
+
+    return these_AUs
