@@ -8,7 +8,7 @@ from glob import glob
 from sklearn.preprocessing import OneHotEncoder, PolynomialFeatures
 from sklearn.decomposition import PCA
 from scipy.io import savemat
-from .utils import load_cinfo
+from .utils import load_cinfo, get_scodes_given_criteria
 
 
 data_path = op.join(op.dirname(__file__), 'data')
@@ -194,8 +194,7 @@ class FaceGenerator:
             pca = PCA(copy=False)
             pca.fit(residuals)  # MemoryError on textures ... downsample?
             resids_pca = pca.transform(residuals)
-            np.save(op.join(save_dir, '%s_pca_min.npy' % mod), resids_pca.min(axis=0))
-            np.save(op.join(save_dir, '%s_pca_max.npy' % mod), resids_pca.max(axis=0))
+            np.save(op.join(save_dir, 'residuals_pca.npy' % mod, resids_pca))
             np.save(op.join(save_dir, '%s_pca_mean.npy' % mod), pca.mean_)
             np.save(op.join(save_dir, '%s_pca_comps.npy' % mod), pca.components_)
 
@@ -235,14 +234,13 @@ class FaceGenerator:
             tmp = tmp.reshape(DATA_SHAPES[self.version][mod])
             results[mod] = tmp
 
-        results = {'scode_' + str(scode): results}
         name = 'id-%i_gen-%s_age-%i_eth-%s.mat' % (scode, gender, age, ethn)
         out_path = op.join(save_dir, name)
         savemat(out_path, results)
 
         return out_path
 
-    def generate_new_face(self, N, age, gender, ethn, save_dir=None):
+    def generate_new_face(self, N, age, gender, ethn, age_range=20, save_dir=None):
         """ Generates a new face by randomly synthesizing PCA components,
         applying the inverse PCA transform, and adding the norm.
 
@@ -264,38 +262,36 @@ class FaceGenerator:
         if save_dir is None:
             save_dir = self.save_dir
 
-        to_write = {'face%i' % i: dict() for i in range(N)}
+        to_write = {i: dict() for i in range(N)}
         for mod in self.mods:
             print("Generating new faces (%s) ..." % mod)
             pca_comps = np.load(op.join(save_dir, '%s_pca_comps.npy' % mod))
             pca_means = np.load(op.join(save_dir, '%s_pca_mean.npy' % mod))
             nz_mask = np.load(op.join(save_dir, '%s_nzmask.npy' % mod))
             betas = self._load_chunks(mod, save_dir, 'betas')
-            mins = np.load(op.join(save_dir, '%s_pca_min.npy' % mod))
-            maxs = np.load(op.join(save_dir, '%s_pca_min.npy' % mod))
-
+            resids_pca = self._load_chunks(mod, save_dir, 'residuals_pca')
+            idx = get_scodes_given_criteria(gender, age, age_range, ethn, 'v1')
+            relev_resids = resids_pca[idx, :]
             random_data = np.zeros((N, pca_comps.shape[0]))
             for i in range(N):  # this can probably be implemented faster ...
-                random_data[i, :] = np.random.uniform(mins, maxs)
+                random_data[i, :] = np.random.uniform(relev_resids.min(axis=0),
+                                                      relev_resids.max(axis=0))
 
+            np.save(op.join(save_dir, '%s_random_init.npy' % mod), random_data)
             inverted_resids = random_data.dot(pca_comps) + pca_means
             norm_vec = self._generate_design_vector(gender, age, ethn)
-            norm = norm_vec[np.newaxis, :].dot(betas)
+            norm = norm_vec.dot(betas)
             final_face_data = norm + inverted_resids
-
-            out_dir = op.join(save_dir, 'new_faces')
-            if not op.isdir(out_dir):
-                os.makedirs(out_dir)
-
             for i in range(N):
                 tmp = np.zeros(DATA_SHAPES[self.version][mod])
                 tmp[nz_mask] = final_face_data[i, :]
                 tmp = tmp.reshape(DATA_SHAPES[self.version][mod])
-                to_write['genface_%i' % i][mod] = tmp
+                to_write[i][mod] = tmp
 
         to_return = []
         for key, value in to_write.items():
-            outname = op.join(out_dir, key + '.mat')
+            name = 'id-g%i_gen-%s_age-%i_eth-%s.mat' % (key, gender, age, ethn)
+            outname = op.join(save_dir, name)
             savemat(outname, value)
             to_return.append(outname)
 
@@ -333,11 +329,14 @@ class FaceGenerator:
     def _get_idx_of_scode(self, scode, save_dir=None):
         """ Returns index of scode. """
 
+        if not isinstance(scode, np.ndarray):
+            scode = np.array(scode)
+
         if save_dir is None:
             save_dir = self.save_dir
 
-        scodes = np.load(op.join(save_dir, 'scodes.npy'))
-        return scode == scodes
+        all_scodes = np.load(op.join(save_dir, 'scodes.npy'))
+        return np.isin(all_scodes, scode)
 
     def _generate_design_vector(self, gender, age, ethn):
         """ Generates a 'design vector' (for lack of a better word). """

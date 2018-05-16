@@ -10,12 +10,12 @@ temp_params2 = {
 
 if ischar(nfdata)
     nfname = strrep(nfdata, '.mat', '');
-    [filepath,nfname,ext] = fileparts(nfname);
+    [~,nfname,~] = fileparts(nfname);
     nfdata = load(nfdata);
-    if ~(numel(fieldnames(nfdata)) == length(face_id))
-        error('Number of face-IDs and nfdata-files is not equal!');
+    
+    if ~strcmp(version, 'v1')
+        error('Cannot generate faces (textures) other than in v1!');
     end
-    nfdata_fieldnames = fieldnames(nfdata);
 end
 
 % check which shapes to load
@@ -32,66 +32,54 @@ AUset = [];
 AUset.adata = adata;
 clear adata
 
-% Loop over face-ids
-for i = 1:length(face_id)
-    this_id = face_id(i);
-    fprintf('Processing id: %i\n', this_id);
-
-    if strcmp(version, 'v2dense')
-        if face_id == 0
-            nf = load('default_face_v2dense');
-        else
-            nf = load_face_v2dense(this_id);
-        end
-    elseif strcmp(version, 'v2')
-        if face_id == 0
-            nf = load('default_face_v2');
-        else
-            nf = load_face_v2(this_id);
-        end
+if strcmp(version, 'v2dense')
+    if face_id == 0
+        nf = load('default_face_v2dense');
     else
-        if face_id == 0
-            nf = load('default_face');
-        else
-            nf = load_face(this_id);
-        end
+        nf = load_face_v2dense(face_id);
     end
-
-    if isstruct(nfdata)
-        this_save_path = fullfile(save_path, ['scode_' num2str(this_id)], nfname);
+elseif strcmp(version, 'v2')
+    if face_id == 0
+        nf = load('default_face_v2');
     else
-        this_save_path = fullfile(save_path, ['scode_' num2str(this_id)]);
+        nf = load_face_v2(face_id);
     end
-
-    if ~exist(this_save_path, 'dir')
-        mkdir(this_save_path);
-    end
-
-    AUset.nf = nf;
-
-    if isstruct(nfdata) && strcmp(version, 'v1')
-        tmp = nfdata.(nfdata_fieldnames{i});
-        AUset.nf.v = tmp.vertices;
-        AUset.nf.texture = tmp.textures;
-        if ~exist(this_save_path, 'dir')
-            mkdir(this_save_path);
-        end
+else
+    if face_id == 0
+        nf = load('default_face');
     else
-        error('Cannot set textures other than in v1!');
+        nf = load_face(face_id);
     end
-
-    AUset.savepath = this_save_path;
-    AUset.labels = au_labels;
-    AUset.params = temp_params2;
-    AUset.eyeparams = eye_params;
-
-    if head_params ~= 0
-        AUset.headparams = head_params;
-    end
-
-    % Start animation!
-    AUset = animate_AUset_GL(AUset);
 end
+
+if isstruct(nfdata)
+    this_save_path = fullfile(save_path, nfname);
+else
+    this_save_path = fullfile(save_path, ['id-' num2str(face_id)]);
+end
+
+if ~exist(this_save_path, 'dir')
+    mkdir(this_save_path);
+end
+
+AUset.nf = nf;
+
+if isstruct(nfdata)
+    AUset.nf.v = nfdata.vertices;
+    AUset.nf.texture = nfdata.textures;
+end
+
+AUset.savepath = this_save_path;
+AUset.labels = au_labels;
+AUset.params = temp_params2;
+AUset.eyeparams = eye_params;
+
+if head_params ~= 0
+    AUset.headparams = head_params;
+end
+
+% Start animation!
+AUset = animate_AUset_GL(AUset);
 
 % Status code
 out = 0;

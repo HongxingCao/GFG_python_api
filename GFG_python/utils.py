@@ -19,6 +19,23 @@ def load_cinfo(version='v1'):
     return df
 
 
+def get_scodes_given_criteria(gender, age, age_range, ethn, version='v1'):
+    """ Returns all scodes conforming to the age/ethn/gender criteria. """
+    cinfo = load_cinfo(version=version)
+    age_up, age_down = age + age_range, age - age_range
+    query = 'gender == @gender & @age_down <= age <= @age_up'
+    query += ' & %s == 1' % ethn
+
+    if 'v2' in version:
+        query += ' & proc_v2 == 1'
+    else:
+        query += ' & proc == 1'
+
+    filtered = cinfo.query(query)
+    face_ids = filtered.scode.values
+    return face_ids
+
+
 def get_all_au_labels():
     """ Finds all possible AU-labels. """
     data_dir = op.join(op.dirname(__file__), 'data')

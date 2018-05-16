@@ -1,9 +1,10 @@
-from __future__ import print_function
+from __future__ import print_function, absolute_import
 import os
 import os.path as op
+import numpy as np
 import matlab as mlab
 import matlab.engine as mlab_eng
-from utils import load_cinfo, get_all_au_labels
+from .utils import load_cinfo, get_all_au_labels, get_scodes_given_criteria
 
 
 def run(face_id=None, nfdata=None, save_path=None, au_labels=None, temp_params=None,
@@ -64,18 +65,8 @@ def run(face_id=None, nfdata=None, save_path=None, au_labels=None, temp_params=N
 
     cinfo = load_cinfo()
     if face_id is None:
-        age_up, age_down = age + age_range, age - age_range
-        query = 'gender == @gender & @age_down <= age <= @age_up'
-        query += ' & %s == 1' % ethnicity
-
-        if 'v2' in version:
-            query += ' & proc_v2 == 1'
-        else:
-            query += ' & proc == 1'
-
-        filtered = cinfo.query(query)
-        face_id = filtered.scode.values
-
+        face_id = get_scodes_given_criteria(gender, age, age_range, ethnicity,
+                                            version='v1')
         if len(face_id) == 0:
             raise ValueError("""No faces available with parameters:
             gender: %s
@@ -83,19 +74,11 @@ def run(face_id=None, nfdata=None, save_path=None, au_labels=None, temp_params=N
             ethn: %s
             version: %s""" % (gender, age, age_range, ethnicity, version))
         else:
-            face_id = face_id.tolist()
-
-    if face_id is None:
-        face_id = 0
-
-    if not isinstance(face_id, list):
-        face_id = [face_id]
-
-    # Just a check if the face-ids are in the scodes
-    for fid in face_id:
-
-        if fid not in cinfo.scode.values:
-            raise ValueError("Face-id '%s' not in scodes!" % str(fid))
+            # draw random
+            face_id = np.random.choice(face_id.tolist(), 1)
+    else:
+        if face_id not in cinfo.scode.values:
+            raise ValueError("Face-id '%s' not in scodes!" % str(face_id))
 
     if engine is None:
         print("Starting Matlab ...", end="")
@@ -104,7 +87,15 @@ def run(face_id=None, nfdata=None, save_path=None, au_labels=None, temp_params=N
         engine.addpath(mlab_path, nargout=0)
         print(" done.")
 
-    face_id_mlab = mlab.double(face_id)
-    print("Running face-ids: %s" % (face_id,))
+    if nfdata is not None:
+        if 'id-g' in nfdata:
+            print("Animating random face using %s ... " % op.basename(nfdata))
+        else:
+            print("Animating face-id (%s) using %s ... " % (str(face_id), op.basename(nfdata)))
+    else:
+        print("Animating face-id (%s) ... " % str(face_id))
+
+    face_id_mlab = mlab.double([face_id])
+
     engine.run_GFG(face_id_mlab, nfdata, save_path, au_labels, temp_params, eye_params,
                    head_params, version)
