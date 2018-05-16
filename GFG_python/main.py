@@ -1,5 +1,6 @@
 from __future__ import print_function
 import os
+import os.path as op
 import matlab as mlab
 import matlab.engine as mlab_eng
 from utils import load_cinfo, get_all_au_labels
@@ -99,6 +100,8 @@ def run(face_id=None, nfdata=None, save_path=None, au_labels=None, temp_params=N
     if engine is None:
         print("Starting Matlab ...", end="")
         engine = mlab_eng.start_matlab()
+        mlab_path = op.join(op.dirname(__file__))
+        engine.addpath(mlab_path, nargout=0)
         print(" done.")
 
     face_id_mlab = mlab.double(face_id)

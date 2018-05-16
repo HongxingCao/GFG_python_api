@@ -43,4 +43,4 @@ MAJOR = _version_major
 MINOR = _version_minor
 MICRO = _version_micro
 VERSION = __version__
-PACKAGE_DATA = {'GFG_python': [op.join('data', 'cinfo.tsv')]}
+PACKAGE_DATA = {'GFG_python': [op.join('data', '*'), '*.m']}

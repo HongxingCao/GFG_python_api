@@ -1,12 +1,12 @@
 from __future__ import absolute_import, print_function
 import h5py
 import os
-import numpy as np
 import os.path as op
-from sklearn.preprocessing import OneHotEncoder, PolynomialFeatures
-from sklearn.decomposition import PCA
+import numpy as np
 from tqdm import tqdm
 from glob import glob
+from sklearn.preprocessing import OneHotEncoder, PolynomialFeatures
+from sklearn.decomposition import PCA
 from scipy.io import savemat
 from .utils import load_cinfo
 
@@ -128,8 +128,7 @@ class FaceGenerator:
         age = cinfo.age.values[:, np.newaxis]
         icept = np.ones((age.size, 1))
         X = np.hstack((icept, gender, ethn, age))
-
-        # TO DO: GENERATE INTERACTIONS!
+        X = self._add_interactions(X)
 
         np.save(op.join(self.save_dir, 'IVs.npy'), X)
         self.iv_names = ['intercept', 'male', 'female', 'WC', 'BA', 'EA', 'age']
@@ -230,7 +229,7 @@ class FaceGenerator:
             betas = self._load_chunks(mod, save_dir, 'betas')
             resids = self._load_chunks(mod, save_dir, 'residuals')[idx, :]
             norm_vec = self._generate_design_vector(gender, age, ethn)
-            tmp_result = norm_vec[np.newaxis, :].dot(betas) + resids
+            tmp_result = norm_vec.dot(betas) + resids
             tmp = np.zeros(DATA_SHAPES[self.version][mod])
             tmp[nz_mask] = np.squeeze(tmp_result)
             tmp = tmp.reshape(DATA_SHAPES[self.version][mod])
@@ -344,7 +343,7 @@ class FaceGenerator:
         """ Generates a 'design vector' (for lack of a better word). """
         mapping = dict(WC=[1, 0, 0], BA=[0, 1, 0], EA=[0, 0, 1])
         gender = [0, 1] if gender == 'F' else [1, 0]
-        des_vec = np.array([1] + gender + mapping[ethn] + [age])
+        des_vec = np.array([1] + gender + mapping[ethn] + [age])[np.newaxis, :]
         des_vec = self._add_interactions(des_vec)
 
         return des_vec

@@ -29,10 +29,13 @@ for i = 1:length(cinfo.scode)
         fprintf('V2: processing %i/%i\n', [i_v2, N_v2]);
         this_face = load_face_v2(scode);
         vertices_v2(:, :, i_v2) = this_face.v;
-        this_face = load_face_v2dense(scode);
-        vertices_v2dense(:, :, i_v2) = this_face.v;
-        i_v2 = i_v2 + 1;
         h5create('/Users/lukas/desktop/testh5.h5', ['/v2/' num2str(scode) '/vertices'], size(this_face.v));
         h5write('/Users/lukas/desktop/testh5.h5', ['/v2/' num2str(scode) '/vertices'], this_face.v);
+        this_face = load_face_v2dense(scode);
+        vertices_v2dense(:, :, i_v2) = this_face.v;
+        h5create('/Users/lukas/desktop/testh5.h5', ['/v2dense/' num2str(scode) '/vertices'], size(this_face.v));
+        h5write('/Users/lukas/desktop/testh5.h5', ['/v2dense/' num2str(scode) '/vertices'], this_face.v);
+        i_v2 = i_v2 + 1;
+
     end
 end

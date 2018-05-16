@@ -21,7 +21,8 @@ def load_cinfo(version='v1'):
 
 def get_all_au_labels():
     """ Finds all possible AU-labels. """
-    all_au_labels = loadmat(op.join(op.dirname(__file__), 'au_labels.mat'))
+    data_dir = op.join(op.dirname(__file__), 'data')
+    all_au_labels = loadmat(op.join(data_dir, 'au_labels.mat'))
     all_au_labels = [str(aul[0]).split('AU')[1]
                      for aul in all_au_labels['au_labels'][0]]
     return all_au_labels
