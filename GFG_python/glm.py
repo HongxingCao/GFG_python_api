@@ -5,8 +5,8 @@ import os.path as op
 import numpy as np
 from tqdm import tqdm
 from glob import glob
-from sklearn.preprocessing import OneHotEncoder, PolynomialFeatures
-from sklearn.decomposition import PCA
+from sklearn.preprocessing import OneHotEncoder, PolynomialFeatures, StandardScaler
+from sklearn.decomposition import PCA, NMF, FastICA
 from scipy.io import savemat
 from .utils import load_cinfo, get_scodes_given_criteria
 
@@ -168,35 +168,57 @@ class FaceGenerator:
                 for name, dat in zip(names2write, [betas, residuals, y]):
                     np.save(op.join(self.save_dir, '%s_%s.npy' % (mod, name)), dat)
 
-    def run_PCA(self, save_dir=None):
+    def run_decomposition(self, algorithm='pca', save_dir=None, **kwargs):
         """ Runs PCA on shape/texture residuals.
 
         Parameters
         ----------
+        algorithm : str
+            Decomposition algorithm ('pca', 'nmf', 'ica')
         save_dir : str
             Path to directory with (intermediate) results. If None, path is
             inferred from self.
+        kwargs : dict
+            Extra arguments for decomposition algorithm
         """
         print("")
         if save_dir is None:
             save_dir = self.save_dir
 
         for mod in self.mods:
-            res_files = sorted(glob(op.join(save_dir, '%s_residuals*.npy' % mod)))
-            if len(res_files) == 1:
-                residuals = np.load(res_files[0])
-            elif len(res_files) > 1:
-                residuals = np.hstack(([np.load(f) for f in res_files]))
-            else:
-                raise ValueError("GLM was not yet fit!")
 
-            print("Running PCA on %s ..." % mod)
-            pca = PCA(copy=False)
-            pca.fit(residuals)  # MemoryError on textures ... downsample?
-            resids_pca = pca.transform(residuals)
-            np.save(op.join(save_dir, 'residuals_pca.npy' % mod, resids_pca))
-            np.save(op.join(save_dir, '%s_pca_mean.npy' % mod), pca.mean_)
-            np.save(op.join(save_dir, '%s_pca_comps.npy' % mod), pca.components_)
+            residuals = self._load_chunks(mod, save_dir, 'residuals')
+
+            if algorithm == 'ica':
+                scaler = StandardScaler()
+                residuals = scaler.fit_transform(residuals)
+                np.save(op.join(save_dir, '%s_residual_means.npy' % mod), scaler.mean_)
+                np.save(op.join(save_dir, '%s_residual_stds.npy' % mod), scaler.scale_)
+
+            print("Running decomposition (%s) on %s ..." % (algorithm, mod))
+
+            if algorithm == 'pca':
+                decomp = PCA(copy=False, **kwargs)
+            elif algorithm == 'nmf':
+                # n_components set to keep comparable to PCA
+                decomp = NMF(n_components=residuals.shape[0], **kwargs)
+            elif algorithm == 'ica':
+                decomp = FastICA(n_components=residuals.shape[0], **kwargs)
+            else:
+                raise ValueError("Please choose from 'pca', 'nmf', 'ica'.")
+
+            decomp.fit(residuals)  # MemoryError on textures ... downsample?
+            resids_decomp = decomp.transform(residuals)
+            np.save(op.join(save_dir, '%s_residuals_decomp.npy' % mod), resids_decomp)
+
+            if algorithm == 'ica':
+                # note: this is the mixing matrix (not components!)
+                np.save(op.join(save_dir, '%s_decomp_comps.npy' % mod), decomp.mixing_)
+            elif algorithm == 'pca':
+                np.save(op.join(save_dir, '%s_pca_means.npy' % mod), decomp.mean_)
+                np.save(op.join(save_dir, '%s_decomp_comps.npy' % mod), decomp.components_)
+            else:  # must be NMF
+                np.save(op.join(save_dir, '%s_decomp_comps.npy' % mod), decomp.components_)
 
     def change_property_face(self, scode, age=None, gender=None, ethn=None,
                              save_dir=None):
@@ -216,12 +238,13 @@ class FaceGenerator:
             Directory with (intermediate) results
         """
 
-        print("")
         if save_dir is None:
             save_dir = self.save_dir
 
         idx = self._get_idx_of_scode(scode, save_dir)
         results = dict()
+
+        print("")
         for mod in self.mods:
             print("Changing property of face (%s) ..." % mod)
             nz_mask = np.load(op.join(save_dir, '%s_nzmask.npy' % mod))
@@ -240,7 +263,8 @@ class FaceGenerator:
 
         return out_path
 
-    def generate_new_face(self, N, age, gender, ethn, age_range=20, save_dir=None):
+    def generate_new_face(self, N, age, gender, ethn, age_range=20, algorithm='pca',
+                          save_dir=None):
         """ Generates a new face by randomly synthesizing PCA components,
         applying the inverse PCA transform, and adding the norm.
 
@@ -258,30 +282,45 @@ class FaceGenerator:
             Path to directory with (intermediate) results.
         """
 
-        print("")
         if save_dir is None:
             save_dir = self.save_dir
 
         to_write = {i: dict() for i in range(N)}
+        print("")
         for mod in self.mods:
             print("Generating new faces (%s) ..." % mod)
-            pca_comps = np.load(op.join(save_dir, '%s_pca_comps.npy' % mod))
-            pca_means = np.load(op.join(save_dir, '%s_pca_mean.npy' % mod))
+            decomp_comps = np.load(op.join(save_dir, '%s_decomp_comps.npy' % mod))
+
+            if algorithm == 'pca':
+                decomp_means = np.load(op.join(save_dir, '%s_pca_means.npy' % mod))
+
             nz_mask = np.load(op.join(save_dir, '%s_nzmask.npy' % mod))
             betas = self._load_chunks(mod, save_dir, 'betas')
-            resids_pca = self._load_chunks(mod, save_dir, 'residuals_pca')
-            idx = get_scodes_given_criteria(gender, age, age_range, ethn, 'v1')
-            relev_resids = resids_pca[idx, :]
-            random_data = np.zeros((N, pca_comps.shape[0]))
+            resids_decomp = self._load_chunks(mod, save_dir, 'residuals_decomp')
+            relev_scodes = get_scodes_given_criteria(gender, age, age_range, ethn, 'v1')
+            idx = self._get_idx_of_scode(relev_scodes)
+            relev_resids = resids_decomp[idx, :]
+            random_data = np.zeros((N, decomp_comps.shape[0]))
             for i in range(N):  # this can probably be implemented faster ...
                 random_data[i, :] = np.random.uniform(relev_resids.min(axis=0),
                                                       relev_resids.max(axis=0))
 
-            np.save(op.join(save_dir, '%s_random_init.npy' % mod), random_data)
-            inverted_resids = random_data.dot(pca_comps) + pca_means
+            # For debugging
+            #np.save(op.join(save_dir, '%s_random_init.npy' % mod), random_data)
+            if algorithm == 'pca':
+                resids_inv = random_data.dot(decomp_comps) + decomp_means
+            elif algorithm == 'ica':
+                resids_inv = random_data.dot(decomp_comps.T)
+                resid_means = np.load(op.join(save_dir, '%s_residual_means.npy' % mod))
+                resid_stds = np.load(op.join(save_dir, '%s_residual_stds.npy' % mod))
+                resids_inv *= resid_stds
+                resids_inv += resid_means
+            elif algorithm == 'nmf':
+                resids_inv = random_data.dot(decomp_comps)
+
             norm_vec = self._generate_design_vector(gender, age, ethn)
             norm = norm_vec.dot(betas)
-            final_face_data = norm + inverted_resids
+            final_face_data = norm + resids_inv
             for i in range(N):
                 tmp = np.zeros(DATA_SHAPES[self.version][mod])
                 tmp[nz_mask] = final_face_data[i, :]
@@ -314,7 +353,6 @@ class FaceGenerator:
         out : numpy array
             Array with data (chunked data is stacked)
         """
-
         files = sorted(glob(op.join(save_dir, '%s_%s*.npy' % (mod, idf))))
 
         if len(files) == 1:
