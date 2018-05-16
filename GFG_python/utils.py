@@ -11,10 +11,10 @@ def load_cinfo(version='v1'):
 
     if version == 'v1':
         df = df[df.proc == 1]
-    elif version == 'v2':
+    elif version == 'v2' or version == 'v2dense':
         df = df[df.proc_v2 == 1]
     else:
-        raise ValueError("Version not known. Pick v1 or v2.")
+        raise ValueError("Version not known. Pick v1, v2, v2dense.")
 
     return df
 

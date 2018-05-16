@@ -1,4 +1,5 @@
 from __future__ import absolute_import, division, print_function
+import os.path as op
 
 # Format expected by setup.py and doc/source/conf.py: string of form "X.Y.Z"
 _version_major = 0
@@ -42,4 +43,4 @@ MAJOR = _version_major
 MINOR = _version_minor
 MICRO = _version_micro
 VERSION = __version__
-PACKAGE_DATA = {}
+PACKAGE_DATA = {'GFG_python': [op.join('data', 'cinfo.tsv')]}
