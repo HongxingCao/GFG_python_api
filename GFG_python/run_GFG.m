@@ -2,17 +2,18 @@ function out = run_GFG(face_id,nfdata,save_path,au_labels,temp_params,eye_params
 % run_GFG Animates a face from the database with given inputs.
 
 % Transform ndarray to cell (as expected by toolbox)
-temp_params2 = {
-    temp_params(1, :);
-    temp_params(2, :);
-    temp_params(3, :);
-};
+
+[N_aus, N_tp] = size(temp_params);
+temp_params2 = {};
+for i = 1:N_aus
+    temp_params2{i} = temp_params(i, :);
+end
 
 if ischar(nfdata)
     nfname = strrep(nfdata, '.mat', '');
     [~,nfname,~] = fileparts(nfname);
     nfdata = load(nfdata);
-    
+
     if ~strcmp(version, 'v1')
         error('Cannot generate faces (textures) other than in v1!');
     end

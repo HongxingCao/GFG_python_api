@@ -43,6 +43,9 @@ def run(face_id=None, nfdata=None, save_path=None, au_labels=None, temp_params=N
 
     if au_labels is None:
         au_labels = ['25-12', '9', '4']
+    else:
+        if isinstance(au_labels, np.ndarray):
+            au_labels = au_labels.tolist()
 
     all_au_labels = get_all_au_labels()
     for lab in au_labels:
@@ -50,9 +53,10 @@ def run(face_id=None, nfdata=None, save_path=None, au_labels=None, temp_params=N
             raise ValueError("AU-label '%s' not in set!" % lab)
 
     if temp_params is None:
-        temp_params = mlab.double([[1, 0.5, 0.5, 0.5, 0.5, 0.5],
-                                   [1, 0.5, 0.5, 0.5, 0.5, 0.5],
-                                   [1, 0.5, 0.5, 0.5, 0.5, 0.5]])
+        N_aus = len(au_labels)
+        default_params = np.array([1, 0.5, 0.5, 0.5, 0.5, 0.5])
+        temp_params = np.tile(default_params, N_aus).reshape((N_aus, 6)).tolist()
+        temp_params = mlab.double(temp_params)
 
     if eye_params is None:
         eye_params = mlab.double([0.5, 0.5, 0.5, 0])
@@ -75,7 +79,7 @@ def run(face_id=None, nfdata=None, save_path=None, au_labels=None, temp_params=N
             version: %s""" % (gender, age, age_range, ethnicity, version))
         else:
             # draw random
-            face_id = np.random.choice(face_id.tolist(), 1)
+            face_id = np.random.choice(face_id.tolist(), 1)[0]
     else:
         if face_id not in cinfo.scode.values:
             raise ValueError("Face-id '%s' not in scodes!" % str(face_id))
@@ -87,7 +91,7 @@ def run(face_id=None, nfdata=None, save_path=None, au_labels=None, temp_params=N
         engine.addpath(mlab_path, nargout=0)
         print(" done.")
 
-    if nfdata is not None:
+    if nfdata != 0:
         if 'id-g' in nfdata:
             print("Animating random face using %s ... " % op.basename(nfdata))
         else:
@@ -96,6 +100,5 @@ def run(face_id=None, nfdata=None, save_path=None, au_labels=None, temp_params=N
         print("Animating face-id (%s) ... " % str(face_id))
 
     face_id_mlab = mlab.double([face_id])
-
     engine.run_GFG(face_id_mlab, nfdata, save_path, au_labels, temp_params, eye_params,
                    head_params, version)

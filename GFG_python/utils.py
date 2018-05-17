@@ -36,16 +36,20 @@ def get_scodes_given_criteria(gender, age, age_range, ethn, version='v1'):
     return face_ids
 
 
-def get_all_au_labels():
+def get_all_au_labels(remove_prefix=True):
     """ Finds all possible AU-labels. """
     data_dir = op.join(op.dirname(__file__), 'data')
-    all_au_labels = loadmat(op.join(data_dir, 'au_labels.mat'))
-    all_au_labels = [str(aul[0]).split('AU')[1]
-                     for aul in all_au_labels['au_labels'][0]]
+    all_au_labels = loadmat(op.join(data_dir, 'au_labels.mat'))['au_labels'][0]
+    all_au_labels = [l[0] for l in all_au_labels]
+
+    if 'AU' in all_au_labels[0] and remove_prefix:
+        # Remove prefix
+        all_au_labels = [str(aul).split('AU')[1] for aul in all_au_labels]
+
     return all_au_labels
 
 
-def sample_AUs(au_labels, n=5, p=0.6, remove_prefix=True):
+def sample_AUs(au_labels, n=5, p=0.6):
     """ Draws a random sample of AUs.
 
     Parameters
@@ -67,8 +71,4 @@ def sample_AUs(au_labels, n=5, p=0.6, remove_prefix=True):
         this_n = np.random.binomial(n=5, p=0.6)
 
     these_AUs = np.random.choice(au_labels, size=this_n, replace=False)
-
-    if remove_prefix:
-        these_AUs = [au.split('AU')[1] for au in these_AUs]
-
     return these_AUs

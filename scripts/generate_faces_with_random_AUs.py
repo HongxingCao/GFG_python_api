@@ -21,8 +21,7 @@ for i in range(N_samples):
 
     # Write parameters to json or something
     these_AUs = sample_AUs(all_au_labels, n=5, p=0.6)
-
     run(face_id=None, nfdata=None, save_path=save_path, au_labels=these_AUs,
         temp_params=None, eye_params=None, head_params=None, gender=genders[i],
         ethnicity=ethnicity, age=age, age_range=age_range, version='v1',
-        engine=None)
+        engine=engine)

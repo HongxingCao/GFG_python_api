@@ -8,7 +8,8 @@ engine = mlab_eng.start_matlab()
 engine.addpath(op.dirname(GFG_python.__file__), nargout=0)
 fg = FaceGenerator(version='v1', save_dir='/Users/lukas/software/GFG_glm')
 
-out = fg.generate_new_face(N=1, age=20, gender='M', ethn='WC', dist='mnorm', shrinkage=True)
+out = fg.generate_new_face(N=1, age=20, gender='M', ethn='WC', dist='mnorm',
+                           shrinkage=False, whitened=True)
 
 for o in out:
     run(face_id=2, nfdata=o, save_path='/Users/lukas/Desktop/testGFG',
