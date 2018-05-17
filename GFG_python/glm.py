@@ -5,12 +5,14 @@ import os.path as op
 import numpy as np
 from tqdm import tqdm
 from glob import glob
-from sklearn.preprocessing import OneHotEncoder, PolynomialFeatures, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, PolynomialFeatures
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.decomposition import PCA, NMF, FastICA
+from sklearn.discriminant_analysis import _cov
 from scipy.io import savemat
 from .utils import load_cinfo, get_scodes_given_criteria
 
-
+# Some global variables
 data_path = op.join(op.dirname(__file__), 'data')
 DATA_LOCS = dict(
     v1=dict(vertices=op.join(data_path, 'vertices_v1.mat'),
@@ -67,7 +69,12 @@ class FaceGenerator:
         return data
 
     def load(self, h5_file=None):
-        """ Loads all necessary data (cinfo, shapes, textures). """
+        """ Loads all necessary data (cinfo, shapes, textures).
+
+        Parameters
+        ----------
+        h5_file : str
+            Path to hdf5-file with all data."""
 
         # Load demographic data (and clean it)
         cinfo = load_cinfo(version=self.version)
@@ -168,13 +175,17 @@ class FaceGenerator:
                 for name, dat in zip(names2write, [betas, residuals, y]):
                     np.save(op.join(self.save_dir, '%s_%s.npy' % (mod, name)), dat)
 
-    def run_decomposition(self, algorithm='pca', save_dir=None, **kwargs):
+    def run_decomposition(self, algorithm='pca', whiten=False, save_dir=None,
+                          **kwargs):
         """ Runs PCA on shape/texture residuals.
 
         Parameters
         ----------
         algorithm : str
             Decomposition algorithm ('pca', 'nmf', 'ica')
+        whiten : bool
+            Whether to whiten the data before decomposition (only relevant
+            for 'pca' and 'ica')
         save_dir : str
             Path to directory with (intermediate) results. If None, path is
             inferred from self.
@@ -194,11 +205,15 @@ class FaceGenerator:
                 residuals = scaler.fit_transform(residuals)
                 np.save(op.join(save_dir, '%s_residual_means.npy' % mod), scaler.mean_)
                 np.save(op.join(save_dir, '%s_residual_stds.npy' % mod), scaler.scale_)
-
+            if algorithm == 'nmf':
+                scaler = MinMaxScaler()
+                residuals = scaler.fit_transform(residuals)
+                np.save(op.join(save_dir, '%s_residual_mins.npy' % mod), scaler.min_)
+                np.save(op.join(save_dir, '%s_residual_scale.npy' % mod), scaler.scale_)
             print("Running decomposition (%s) on %s ..." % (algorithm, mod))
 
             if algorithm == 'pca':
-                decomp = PCA(copy=False, **kwargs)
+                decomp = PCA(copy=False, whiten=whiten, **kwargs)
             elif algorithm == 'nmf':
                 # n_components set to keep comparable to PCA
                 decomp = NMF(n_components=residuals.shape[0], **kwargs)
@@ -215,8 +230,11 @@ class FaceGenerator:
                 # note: this is the mixing matrix (not components!)
                 np.save(op.join(save_dir, '%s_decomp_comps.npy' % mod), decomp.mixing_)
             elif algorithm == 'pca':
-                np.save(op.join(save_dir, '%s_pca_means.npy' % mod), decomp.mean_)
+                np.save(op.join(save_dir, '%s_decomp_means.npy' % mod), decomp.mean_)
                 np.save(op.join(save_dir, '%s_decomp_comps.npy' % mod), decomp.components_)
+                if whiten:
+                    np.save(op.join(save_dir, '%s_decomp_explvar.npy' % mod), decomp.explained_variance_)
+
             else:  # must be NMF
                 np.save(op.join(save_dir, '%s_decomp_comps.npy' % mod), decomp.components_)
 
@@ -264,6 +282,7 @@ class FaceGenerator:
         return out_path
 
     def generate_new_face(self, N, age, gender, ethn, age_range=20, algorithm='pca',
+                          dist='normal', whitened=False, shrinkage=False,
                           save_dir=None):
         """ Generates a new face by randomly synthesizing PCA components,
         applying the inverse PCA transform, and adding the norm.
@@ -278,6 +297,13 @@ class FaceGenerator:
             Desired gender of new face ('M' or 'F')
         ethn : str
             Desired ethnicity of new face ('WC', 'BA', 'EA')
+        dist : str
+            Distribution used to sample new values ('uniform', 'norm', 'mnorm')
+        whitened : bool
+            Was the data whitened before decomposition?
+        shrinkage : bool
+            Whether to apply shrinkage to covariance estimation of residuals.
+            Only relevant when dist='mnorm'.
         save_dir : str
             Path to directory with (intermediate) results.
         """
@@ -291,9 +317,6 @@ class FaceGenerator:
             print("Generating new faces (%s) ..." % mod)
             decomp_comps = np.load(op.join(save_dir, '%s_decomp_comps.npy' % mod))
 
-            if algorithm == 'pca':
-                decomp_means = np.load(op.join(save_dir, '%s_pca_means.npy' % mod))
-
             nz_mask = np.load(op.join(save_dir, '%s_nzmask.npy' % mod))
             betas = self._load_chunks(mod, save_dir, 'betas')
             resids_decomp = self._load_chunks(mod, save_dir, 'residuals_decomp')
@@ -302,13 +325,34 @@ class FaceGenerator:
             relev_resids = resids_decomp[idx, :]
             random_data = np.zeros((N, decomp_comps.shape[0]))
             for i in range(N):  # this can probably be implemented faster ...
-                random_data[i, :] = np.random.uniform(relev_resids.min(axis=0),
-                                                      relev_resids.max(axis=0))
+                if dist == 'uniform':
+                    mins, maxs = relev_resids.min(axis=0), relev_resids.max(axis=0)
+                    random_data[i, :] = np.random.uniform(mins, maxs)
+                elif dist == 'norm':
+                    means, stds = relev_resids.mean(axis=0), relev_resids.std(axis=0)
+                    random_data[i, :] = np.random.normal(means, stds)
+                elif dist == 'mnorm':
+                    means = relev_resids.mean(axis=0)
+
+                    if shrinkage:
+                        cov = _cov(relev_resids, shrinkage='auto')
+                    else:
+                        cov = np.cov(relev_resids.T)
+
+                    random_data[i, :] = np.random.multivariate_normal(means, cov)
+                else:
+                    raise ValueError("Please choose `dist` from ('uniform', "
+                                     "'norm', 'mnorm')")
 
             # For debugging
-            #np.save(op.join(save_dir, '%s_random_init.npy' % mod), random_data)
             if algorithm == 'pca':
-                resids_inv = random_data.dot(decomp_comps) + decomp_means
+                decomp_means = np.load(op.join(save_dir, '%s_decomp_means.npy' % mod))
+                if whitened:
+                    decomp_explvar = np.load(op.join(save_dir, '%s_decomp_explvar.npy' % mod))
+                    resids_inv = np.dot(random_data, np.sqrt(decomp_explvar[:, np.newaxis]) *
+                                        decomp_comps) + decomp_means
+                else:
+                    resids_inv = random_data.dot(decomp_comps) + decomp_means
             elif algorithm == 'ica':
                 resids_inv = random_data.dot(decomp_comps.T)
                 resid_means = np.load(op.join(save_dir, '%s_residual_means.npy' % mod))
@@ -317,6 +361,10 @@ class FaceGenerator:
                 resids_inv += resid_means
             elif algorithm == 'nmf':
                 resids_inv = random_data.dot(decomp_comps)
+                resid_mins = np.load(op.join(save_dir, '%s_residual_mins.npy' % mod))
+                resid_scale = np.load(op.join(save_dir, '%s_residual_scale.npy' % mod))
+                resids_inv -= resid_mins
+                resids_inv /= resid_scale
 
             norm_vec = self._generate_design_vector(gender, age, ethn)
             norm = norm_vec.dot(betas)
