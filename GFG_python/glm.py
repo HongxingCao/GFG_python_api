@@ -74,7 +74,8 @@ class FaceGenerator:
         Parameters
         ----------
         h5_file : str
-            Path to hdf5-file with all data."""
+            Path to hdf5-file with all data.
+        """
 
         # Load demographic data (and clean it)
         cinfo = load_cinfo(version=self.version)
@@ -141,7 +142,6 @@ class FaceGenerator:
         self.iv_names = ['intercept', 'male', 'female', 'WC', 'BA', 'EA', 'age']
 
         # Now, define the data
-        names2write = ['betas', 'residuals', 'DVs']
         print("\nStart GLM fitting ...")
         for mod in self.mods:
             y = self.fdata['data'][mod]
@@ -161,9 +161,10 @@ class FaceGenerator:
                     yhat = X.dot(betas)
                     residuals = tmp_y - yhat
 
-                    for name, dat in zip(names2write, [betas, residuals, tmp_y]):
-                        this_i = str(iC).rjust(3, '0')
-                        np.save(op.join(self.save_dir, '%s_%s_chunk%s.npy' % (mod, name, this_i)), dat)
+                    this_i = str(iC).rjust(3, '0')
+                    np.save(op.join(self.save_dir, '%s_residuals_raw_chunk%s.npy' % (mod, this_i)), residuals)
+                    np.save(op.join(self.save_dir, '%s_betas_chunk%s.npy' % (mod, this_i)), betas)
+                    np.save(op.join(self.save_dir, '%s_DVs_chunk%s.npy' % (mod, this_i)), tmp_y)
                     iC += 1
             else:
                 # Fit the models in one go
@@ -172,8 +173,9 @@ class FaceGenerator:
                 residuals = y - yhat
 
                 # Write to disk
-                for name, dat in zip(names2write, [betas, residuals, y]):
-                    np.save(op.join(self.save_dir, '%s_%s.npy' % (mod, name)), dat)
+                np.save(op.join(self.save_dir, '%s_residuals_raw.npy' % mod), residuals)
+                np.save(op.join(self.save_dir, '%s_betas.npy' % mod), betas)
+                np.save(op.join(self.save_dir, '%s_DVs.npy' % mod), tmp_y)
 
     def run_decomposition(self, algorithm='pca', whiten=False, save_dir=None,
                           **kwargs):
@@ -198,18 +200,18 @@ class FaceGenerator:
 
         for mod in self.mods:
 
-            residuals = self._load_chunks(mod, save_dir, 'residuals')
+            residuals = self._load_chunks(mod, save_dir, 'residuals_raw')
 
             if algorithm == 'ica':
                 scaler = StandardScaler()
                 residuals = scaler.fit_transform(residuals)
-                np.save(op.join(save_dir, '%s_residual_means.npy' % mod), scaler.mean_)
-                np.save(op.join(save_dir, '%s_residual_stds.npy' % mod), scaler.scale_)
+                np.save(op.join(save_dir, '%s_residuals_means.npy' % mod), scaler.mean_)
+                np.save(op.join(save_dir, '%s_residuals_stds.npy' % mod), scaler.scale_)
             if algorithm == 'nmf':
                 scaler = MinMaxScaler()
                 residuals = scaler.fit_transform(residuals)
-                np.save(op.join(save_dir, '%s_residual_mins.npy' % mod), scaler.min_)
-                np.save(op.join(save_dir, '%s_residual_scale.npy' % mod), scaler.scale_)
+                np.save(op.join(save_dir, '%s_residuals_mins.npy' % mod), scaler.min_)
+                np.save(op.join(save_dir, '%s_residuals_scale.npy' % mod), scaler.scale_)
             print("Running decomposition (%s) on %s ..." % (algorithm, mod))
 
             if algorithm == 'pca':
@@ -222,7 +224,7 @@ class FaceGenerator:
             else:
                 raise ValueError("Please choose from 'pca', 'nmf', 'ica'.")
 
-            decomp.fit(residuals)  # MemoryError on textures ... downsample?
+            decomp.fit(residuals)
             resids_decomp = decomp.transform(residuals)
             np.save(op.join(save_dir, '%s_residuals_decomp.npy' % mod), resids_decomp)
 
@@ -267,7 +269,7 @@ class FaceGenerator:
             print("Changing property of face (%s) ..." % mod)
             nz_mask = np.load(op.join(save_dir, '%s_nzmask.npy' % mod))
             betas = self._load_chunks(mod, save_dir, 'betas')
-            resids = self._load_chunks(mod, save_dir, 'residuals')[idx, :]
+            resids = self._load_chunks(mod, save_dir, 'residuals_raw')[idx, :]
             norm_vec = self._generate_design_vector(gender, age, ethn)
             tmp_result = norm_vec.dot(betas) + resids
             tmp = np.zeros(DATA_SHAPES[self.version][mod])
@@ -355,14 +357,14 @@ class FaceGenerator:
                     resids_inv = random_data.dot(decomp_comps) + decomp_means
             elif algorithm == 'ica':
                 resids_inv = random_data.dot(decomp_comps.T)
-                resid_means = np.load(op.join(save_dir, '%s_residual_means.npy' % mod))
-                resid_stds = np.load(op.join(save_dir, '%s_residual_stds.npy' % mod))
+                resid_means = np.load(op.join(save_dir, '%s_residuals_means.npy' % mod))
+                resid_stds = np.load(op.join(save_dir, '%s_residuals_stds.npy' % mod))
                 resids_inv *= resid_stds
                 resids_inv += resid_means
             elif algorithm == 'nmf':
                 resids_inv = random_data.dot(decomp_comps)
-                resid_mins = np.load(op.join(save_dir, '%s_residual_mins.npy' % mod))
-                resid_scale = np.load(op.join(save_dir, '%s_residual_scale.npy' % mod))
+                resid_mins = np.load(op.join(save_dir, '%s_residuals_mins.npy' % mod))
+                resid_scale = np.load(op.join(save_dir, '%s_residuals_scale.npy' % mod))
                 resids_inv -= resid_mins
                 resids_inv /= resid_scale
 
