@@ -36,6 +36,17 @@ def get_scodes_given_criteria(gender, age, age_range, ethn, version='v1'):
     return face_ids
 
 
+def get_info_given_scode(scode, version='v1'):
+    """ Returns info (gender, age, ethnicity) from a face with a given
+    scode. """
+    cinfo = load_cinfo(version='v1')
+    this_face = cinfo.loc[cinfo['scode'] == scode]
+    gender, age = this_face['gender'].iloc[0], int(this_face['age'].iloc[0])
+    tmp = this_face[['BA', 'WC', 'EA']]
+    ethn = tmp.columns[(tmp == 1).iloc[0]][0]
+    return dict(gender=gender, age=age, ethn=ethn)
+
+
 def get_all_au_labels(remove_prefix=True):
     """ Finds all possible AU-labels. """
     data_dir = op.join(op.dirname(__file__), 'data')

@@ -5,7 +5,8 @@ import os.path as op
 import numpy as np
 import matlab as mlab
 import matlab.engine as mlab_eng
-from .utils import load_cinfo, get_all_au_labels, get_scodes_given_criteria
+from .utils import (load_cinfo, get_all_au_labels, get_scodes_given_criteria,
+                    get_info_given_scode)
 
 
 def run(face_id=None, nfdata=None, save_path=None, au_labels=None,
@@ -94,6 +95,8 @@ def run(face_id=None, nfdata=None, save_path=None, au_labels=None,
         else:
             # draw random
             face_id = np.random.choice(face_id.tolist(), 1)[0]
+            face_info = get_info_given_scode(face_id)
+            info_dict.update(face_info)
     else:
         if face_id not in cinfo.scode.values:
             raise ValueError("Face-id '%s' not in scodes!" % str(face_id))
