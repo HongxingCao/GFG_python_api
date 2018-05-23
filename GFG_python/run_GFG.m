@@ -2,7 +2,6 @@ function out = run_GFG(face_id,nfdata,save_path,au_labels,temp_params,eye_params
 % run_GFG Animates a face from the database with given inputs.
 
 % Transform ndarray to cell (as expected by toolbox)
-
 [N_aus, N_tp] = size(temp_params);
 temp_params2 = {};
 for i = 1:N_aus
@@ -53,16 +52,6 @@ else
     end
 end
 
-if isstruct(nfdata)
-    this_save_path = fullfile(save_path, nfname);
-else
-    this_save_path = fullfile(save_path, ['id-' num2str(face_id)]);
-end
-
-if ~exist(this_save_path, 'dir')
-    mkdir(this_save_path);
-end
-
 AUset.nf = nf;
 
 if isstruct(nfdata)
@@ -70,7 +59,7 @@ if isstruct(nfdata)
     AUset.nf.texture = nfdata.textures;
 end
 
-AUset.savepath = this_save_path;
+AUset.savepath = save_path;
 AUset.labels = au_labels;
 AUset.params = temp_params2;
 AUset.eyeparams = eye_params;
